@@ -1,6 +1,8 @@
 import requests
 from pyquery import PyQuery as pq
 import json
+import os
+import sys
 
 class SpiderForPixiv:
 
@@ -38,6 +40,10 @@ class SpiderForPixiv:
         }
         r = requests.get(img_url, headers=img_headers)
         suffix = img_url[-3:]
+
+        if not os.path.exists('Pixiv'):
+            os.mkdir('Pixiv')
+
         with open('Pixiv/' + illust_id + '.' + suffix, 'wb') as f:
             f.write(r.content)
         
@@ -53,31 +59,41 @@ class SpiderForPixiv:
         j = json.loads(d)['illust'][illust_id]['urls']
         return j
 
-    def get_pic_json(self, content: str):
+    def get_pic_json(self, pic_num: int):
         '''
             直接根据网站提供的json文件获取图片列表
         '''
-        html = json.loads(content)
-        illust_list = []
-        for item in html['contents']:
-            illust_list.append('https://www.pixiv.net/artworks/' + str(item['illust_id']))
+        # Pixiv每页有50张图片，所以计算需要的页数
+        pages = pic_num // 50 + 1
+        if pic_num <= 50:
+            pages = 1
         
-        # json_str = json.dumps(illust_list)
-        # self.save_comtent('pic_lists.json', json_str)
+        for i in range(1, pages + 1):
+            url = 'https://www.pixiv.net/ranking.php?mode=daily&content=illust&p=' + str(i) + '&format=json'
+            r = requests.get(url, headers=self.headers, cookies=self.cookies)
+            html = json.loads(r.text)
 
-        for item in illust_list:
-            links = self.get_pic_url(item, item[-8:])
-            if links['original'] != '':
-                self.download_pictures(links['original'], item[-8:])
-            else:
-                print('No original picture.')
+            illust_list = []
+            for item in html['contents']:
+                illust_list.append('https://www.pixiv.net/artworks/' + str(item['illust_id']))
+            
+            for item in illust_list:
+                links = self.get_pic_url(item, item[-8:])
+                if links['original'] != '':
+                    self.download_pictures(links['original'], item[-8:])
+                    pic_num -= 1
+                else:
+                    print('No original picture.')
 
+                if pic_num <= 0:
+                    exit('All Pictures are Downloaded')
 
 if __name__ == '__main__':
     
     spider = SpiderForPixiv()
-    url = 'https://www.pixiv.net/ranking.php?mode=daily&content=illust&p=1&format=json'
-    r = requests.get(url, headers=spider.headers, cookies=spider.cookies)
-    content = r.text
-    
-    spider.get_pic_json(content)
+    img_num = 50
+    if len(sys.argv) > 1:
+        img_num = sys.argv[1]
+
+    spider.get_pic_json(int(img_num))
+    print('All pictures are downloaded.')
